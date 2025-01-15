@@ -1,0 +1,50 @@
+    def toggle(self):
+        """ switch the state of the pane"""
+
+        self.tree_open = not self.tree_open
+        self.tree_expanded = self.tree_open and self.contentsRect().width() >= self.min_width
+
+        self.resizeContent()
+
+    def resizeContent(self):
+        """sizes all the elements accordingly"""
+        size = self.tree_size
+
+        if self.contentsRect().width() < self.min_width:
+            if self.tree_expanded and self.tree_open:
+                self.tree_open = False
+        elif self.tree_expanded or self.tree_open:
+            self.tree_open = True
+            self.tree_expanded = True
+
+        if self.tree_open:
+            size = self.tree_expanded_size
+
+        if self.contentsRect().width() < size:
+            size = self.contentsRect().width()
+
+        if self.contentsRect().width() >= self.min_width and not self.tree_over:
+            tree_size = size
+        else:
+            tree_size = self.tree_base_size
+
+        self.frame.resize(self.contentsRect().width() - tree_size, self.contentsRect().height())
+        self.frame.move(tree_size, self.frame.pos().y())
+
+        if size > self.frame.x():
+            self.tree.setParent(self.frame2)
+            self.tree.resize(size, self.contentsRect().height())
+
+            self.frame2.setVisible(True)
+            set_acrylic_round_corners(self.frame2, FColors.AcrylicFillColorBase.get())
+            # Todo fixes drag lag
+            threading.Thread(target=self.resize_dialog, args=(size,), daemon=True).start()
+            self.move_dialog()
+            self.tree.verticalLayout.setContentsMargins(5, 5, 5, 3)
+        else:
+            self.tree.setParent(self)
+            self.tree.setVisible(True)
+            self.tree.resize(size, self.contentsRect().height())
+
+            self.frame2.hide()
+            self.tree.verticalLayout.setContentsMargins(4, 4, 4, 4)
