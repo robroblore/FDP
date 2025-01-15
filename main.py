@@ -21,6 +21,7 @@ class DataType(IntEnum):
     DEBUG = 0
     COMMAND = 1
     FILE = 2
+    DISCONNECT = 3
 
 
 if __name__ == "__main__":
@@ -73,3 +74,25 @@ if __name__ == "__main__":
 
     local_client = client.Client(login, isHost)
     local_client.connect()
+
+    while True:
+        print("1. Send debug")
+        print("2. Send command")
+        print("3. Send file")
+        print("4. Exit")
+
+        choice = int(input("Enter your choice: "))
+
+        match choice:
+            case 1:
+                local_client.send(DataType.DEBUG, input("Enter debug message: "))
+            case 2:
+                local_client.send(DataType.COMMAND, input("Enter command: "))
+            case 3:
+                local_client.send(DataType.FILE, input("Enter file path: "))
+            case 4:
+                local_client.send(DataType.DISCONNECT, "")
+                break
+            case _:
+                print("Invalid choice")
+                continue

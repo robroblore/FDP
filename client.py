@@ -24,7 +24,10 @@ class Client:
 
     def connect(self):
 
-        self.SERVER = input("Enter the server IP (10.xxx.xxx.xxx): ")
+        if self.isHost:
+            self.SERVER = socket.gethostbyname(socket.gethostname())
+        else:
+            self.SERVER = input("Enter the server IP (10.xxx.xxx.xxx): ")
 
         try:
             # Connect to the server
@@ -58,23 +61,33 @@ class Client:
 
         self.client.send(str(data_type).encode(self.FORMAT))
 
+        data_size = str(len(data)).encode(self.FORMAT)
+        data_size += b' ' * (self.HEADERDATALEN - len(data_size))
+
         match data_type:
             case self.DataType.DEBUG:
                 # Debug message
-                self.client.send(str(len(data)).encode(self.FORMAT))
-                self.client.send(data.encode(self.FORMAT))
+                data = data.encode(self.FORMAT)
+                self.client.send(data_size)
+                self.client.send(data)
 
             case self.DataType.COMMAND:
                 # Command
-                self.client.send(str(len(data)).encode(self.FORMAT))
-                self.client.send(data.encode(self.FORMAT))
+                data = data.encode(self.FORMAT)
+                self.client.send(data_size)
+                self.client.send(data)
 
             case self.DataType.FILE:
                 # File
-                self.client.send(str(len(data)).encode(self.FORMAT))
-                file_name = "filename.txt"
+                self.client.send(data_size)
+                file_name = data
                 self.client.send(str(len(file_name)).encode(self.FORMAT))
                 self.client.send(file_name.encode(self.FORMAT))
+
+            case self.DataType.DISCONNECT:
+                # Disconnect
+                self.isConnected = False
+                self.client.close()
 
             case _:
                 # Invalid data type

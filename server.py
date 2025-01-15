@@ -30,6 +30,9 @@ class Server:
             try:
                 data_type = int(conn.recv(1).decode(self.FORMAT))
 
+                if data_type == self.DataType.DISCONNECT:
+                    break
+
                 data_length = int(conn.recv(self.HEADERDATALEN).decode(self.FORMAT))
 
                 match data_type:
