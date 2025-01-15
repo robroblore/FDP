@@ -1,2 +1,0 @@
-# FDP
-File Delivery Protocol
