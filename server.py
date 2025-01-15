@@ -1,24 +1,16 @@
 import socket
 import threading
-
-# FORMAT = The format (encryption) of the message to be received
-DEFAULT_FORMAT = "utf-8"
-
-# HEADERLEN = Information about the message to be received (in this case,
-# the length of the message)
-DEFAULT_HEADERLEN = 64
-
-DEFAULT_PORT = 6969  # Default port number for the server
+import main
 
 
 class Server:
     def __init__(self):
-        self.FORMAT = DEFAULT_FORMAT
-        self.HEADERLEN = DEFAULT_HEADERLEN
-        self.PORT = DEFAULT_PORT
+        self.FORMAT = main.DEFAULT_FORMAT
+        self.HEADERDATALEN = main.DEFAULT_HEADERDATALEN
+        self.PORT = main.DEFAULT_PORT
 
         self.SERVER_IP = socket.gethostbyname(socket.gethostname())
-        self.ADDR = (self.SERVER_IP, DEFAULT_PORT)
+        self.ADDR = (self.SERVER_IP, main.DEFAULT_PORT)
 
         # Create a socket object (AF_INET = IPv4, SOCK_STREAM = TCP)
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -29,7 +21,7 @@ class Server:
 
     def handle_client(self, conn):
         # Get client name
-        login = conn.recv(128).decode(self.FORMAT)
+        login = conn.recv(64).decode(self.FORMAT)
         self.CLIENTS[login] = conn
         print(f"{login} has connected to the server from {conn.getpeername()}")
 
@@ -46,7 +38,7 @@ class Server:
     def start(self):
         # Listen for incoming connections
         self.server.listen()
-        print(f"Server is listening on {self.SERVER_IP}:{DEFAULT_PORT}")
+        print(f"Server is listening on {self.SERVER_IP}:{self.PORT}")
         while True:
             # Accept the connection
             conn, addr = self.server.accept()
