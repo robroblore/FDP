@@ -20,7 +20,9 @@ class Server:
 
         self.CLIENTS = dict()
 
-    def handle_client(self, conn): # TODO: Use threading for file transfer so app doesnt freeze
+    # TODO: Use threading for file transfer so app doesnt freeze
+    # TODO: Check file hash to ensure file integrity
+    def handle_client(self, conn):
         # Get client name
         login = conn.recv(64).decode(self.FORMAT)
         self.CLIENTS[login] = conn
@@ -53,6 +55,8 @@ class Server:
                         file_name_len = int(conn.recv(self.HEADERDATALEN).decode(self.FORMAT))
                         file_name = conn.recv(file_name_len).decode(self.FORMAT)
                         print("[FILE] Receiving file: ", file_name)
+
+                        # TODO: RECEIVE FILES
 
                     case _:
                         # Invalid data type

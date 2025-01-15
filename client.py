@@ -1,6 +1,7 @@
 import socket
 import threading
 import main
+import os
 
 
 class Client:
@@ -10,6 +11,7 @@ class Client:
         self.HEADERDATALEN = main.DEFAULT_HEADERDATALEN
         self.PORT = main.DEFAULT_PORT
         self.DataType = main.DataType
+        self.FILE_CHUNK_SIZE = 1024
 
         self.SERVER = None
         self.LOGIN = login
@@ -46,7 +48,7 @@ class Client:
         self.listener = threading.Thread(target=self.listen)
         self.listener.start()
 
-    def send(self, data_type: int, data):
+    def send(self, data_type: int, data: str):
         """
         Sent data to the server
 
@@ -59,30 +61,58 @@ class Client:
             - File name
         """
 
+        if data_type == self.DataType.FILE:
+            if not os.path.exists(data):
+                print("File does not exist")
+                return
+
+            data_size = os.path.getsize(data)
+        else:
+            data_size = len(data)
+
         self.client.send(str(data_type).encode(self.FORMAT))
 
-        data_size = str(len(data)).encode(self.FORMAT)
-        data_size += b' ' * (self.HEADERDATALEN - len(data_size))
+        data_size_info = str(data_size).encode(self.FORMAT)
+        data_size_info += b' ' * (self.HEADERDATALEN - len(data_size_info))
 
         match data_type:
             case self.DataType.DEBUG:
                 # Debug message
                 data = data.encode(self.FORMAT)
-                self.client.send(data_size)
+                self.client.send(data_size_info)
                 self.client.send(data)
 
             case self.DataType.COMMAND:
                 # Command
                 data = data.encode(self.FORMAT)
-                self.client.send(data_size)
+                self.client.send(data_size_info)
                 self.client.send(data)
 
             case self.DataType.FILE:
-                # File
-                self.client.send(data_size)
-                file_name = data
+                # File -> data = file path
+                # Could use socket.sendfile() but where's the fun in that?
+                self.client.send(data_size_info)
+                file_name = data.split("//")[-1]
                 self.client.send(str(len(file_name)).encode(self.FORMAT))
                 self.client.send(file_name.encode(self.FORMAT))
+
+                print("[FILE] Started sending file: ", file_name)
+
+                chunks = data_size // self.FILE_CHUNK_SIZE
+                remaining_data = data_size % self.FILE_CHUNK_SIZE
+                print("[DEBUG] File size: ", data_size)
+                print("[DEBUG] Number of chunks: ", data_size)
+                print("[DEBUG] Remaining data: ", remaining_data)
+
+                counter = 0
+                with open(data, "rb") as file:
+                    for size in [chunks * self.FILE_CHUNK_SIZE, remaining_data]:
+                        print(f"Sent {counter} chunk(s) out of {chunks + 1} ({(chunks+1) / counter})")
+                        file_data = file.read(size)
+                        if not file_data:
+                            break
+                        self.client.send(file_data)
+                        counter += 1
 
             case self.DataType.DISCONNECT:
                 # Disconnect
