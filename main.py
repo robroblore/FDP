@@ -15,7 +15,8 @@ if __name__ == "__main__":
         local = server.Server()
         local.start()
     elif choice == 2:
-        local = client.Client()
+        local = client.Client(input("Enter your username: "))
+        local.connect()
     else:
         print("Invalid choice")
 

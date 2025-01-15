@@ -25,8 +25,23 @@ class Server:
         # Bind the socket to the port 6969
         self.server.bind(self.ADDR)
 
+        self.CLIENTS = dict()
+
     def handle_client(self, conn):
-        pass
+        # Get client name
+        login = conn.recv(128).decode(self.FORMAT)
+        self.CLIENTS[login] = conn
+        print(f"{login} has connected to the server from {conn.getpeername()}")
+
+        while True:
+            try:
+                pass
+            except:
+                break
+
+        print(f"{login} has disconnected from the server")
+        del self.CLIENTS[login]
+        conn.close()
 
     def start(self):
         # Listen for incoming connections
