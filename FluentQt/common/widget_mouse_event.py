@@ -27,25 +27,27 @@ class WidgetMouseEvent(QObject):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if event.type() in [QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease, QEvent.Type.MouseMove,
                             QEvent.Type.Enter, QEvent.Type.Leave]:
+            try:
+                old_hover = self.parent.isHover
+                old_pressed = self.parent.isPressed
 
-            old_hover = self.parent.isHover
-            old_pressed = self.parent.isPressed
+                if event.type() in [QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease]:
+                    self.parent.isPressed = self.isUnderMouse() and event.type() == QEvent.Type.MouseButtonPress
+                    self._pressLater = False
 
-            if event.type() in [QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease]:
-                self.parent.isPressed = self.isUnderMouse() and event.type() == QEvent.Type.MouseButtonPress
-                self._pressLater = False
+                self.parent.isHover = self.isUnderMouse() and self.parent.window().isActiveWindow()
 
-            self.parent.isHover = self.isUnderMouse() and self.parent.window().isActiveWindow()
+                if self.parent.isPressed and not self.parent.isHover:
+                    self.parent.isPressed = False
+                    self._pressLater = True
 
-            if self.parent.isPressed and not self.parent.isHover:
-                self.parent.isPressed = False
-                self._pressLater = True
+                elif not self.parent.isPressed and self.parent.isHover and self._pressLater:
+                    self.parent.isPressed = True
+                    self._pressLater = False
 
-            elif not self.parent.isPressed and self.parent.isHover and self._pressLater:
-                self.parent.isPressed = True
-                self._pressLater = False
-
-            if old_hover != self.parent.isHover or old_pressed != self.parent.isPressed:
-                self.parent.repaint()
+                if old_hover != self.parent.isHover or old_pressed != self.parent.isPressed:
+                    self.parent.repaint()
+            except RuntimeError:
+                pass
 
         return super().event(event)

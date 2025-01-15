@@ -1,14 +1,10 @@
 # coding=utf-8
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QSizePolicy
-from qtpy.QtCore import QObject, QEvent
-from qtpy.QtGui import QResizeEvent
-from qtpy.QtCore import Qt, QSize, QPoint
-from qtpy.QtWidgets import QVBoxLayout, QPushButton, QWidget, QHBoxLayout, QSpacerItem
+from qtpy.QtCore import Qt, QSize, QPoint, QObject, QEvent, Signal
+from qtpy.QtWidgets import QVBoxLayout, QWidget, QHBoxLayout, QSpacerItem, QSizePolicy
 
 from .navigation_tree import FNavTreeWidget, FNavTreeWidgetItem
 from ..common.icon import FFontIcon
-from ..widgets import FSearchLineEdit, FNavigationViewButton, FCheckBox
+from ..widgets import FSearchLineEdit, FNavigationViewButton
 from ..widgets.frame import FFrame
 
 

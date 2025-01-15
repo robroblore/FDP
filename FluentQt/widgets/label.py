@@ -2,7 +2,7 @@
 from enum import Enum
 from typing import Optional
 
-from PySide6.QtWidgets import QLabel, QWidget
+from qtpy.QtWidgets import QLabel, QWidget
 
 from .. import fTheme
 from ..common.overload import Overload

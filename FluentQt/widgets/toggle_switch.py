@@ -1,11 +1,9 @@
 # coding=utf-8
 from typing import Optional
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QStyle, QStyleOption
-from qtpy.QtCore import QRect, QPropertyAnimation, QEasingCurve
+from qtpy.QtCore import QRect, QPropertyAnimation, QEasingCurve, Qt
 from qtpy.QtGui import QPaintEvent, QPainter, QCursor, QPainterPath
-from qtpy.QtWidgets import QCheckBox, QWidget
+from qtpy.QtWidgets import QCheckBox, QWidget,QStyle, QStyleOption
 
 from .. import FColors
 from ..common.overload import Overload

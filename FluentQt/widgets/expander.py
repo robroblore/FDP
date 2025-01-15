@@ -2,9 +2,10 @@
 from enum import Enum
 from typing import Optional, Union
 
-from PySide6.QtCore import QRectF, QSize, QPoint, Signal, QObject, QEvent, Qt
-from PySide6.QtGui import QPaintEvent, QIcon, QPixmap, QPainter, QPainterPath, QMouseEvent, QRegion, QResizeEvent
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy, QBoxLayout
+from PySide6.QtWidgets import QLayout
+from qtpy.QtCore import QRectF, QSize, QPoint, Signal, QObject, QEvent, Qt
+from qtpy.QtGui import QPaintEvent, QIcon, QPixmap, QPainter, QPainterPath, QMouseEvent, QRegion, QResizeEvent
+from qtpy.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy, QBoxLayout
 
 from ..common.overload import Overload
 from ..common.widget_animations import WidgetAnimationManager, WidgetAnimationType
@@ -22,7 +23,7 @@ class FExpanderHeader(QWidget):
     def __init__(self, parent):
         super().__init__(parent=parent)
 
-        self._expandDirection: FExpander.ExpandDirection = FExpander.ExpandDirection.Expand_Down
+        self._expandDirection: FExpander.ExpandDirection = FExpander.ExpandDirection.DOWN
 
         self.isPressed: bool = False
         self.isHover: bool = False
@@ -31,38 +32,42 @@ class FExpanderHeader(QWidget):
         self.arrowAniYA = RotateAnimation(self, installEventFilter=False, yOffset=-1)
         self.arrowAniX = TranslateAnimation(self, installEventFilter=False, offset=1)
 
-        self.headerhorizontalLayout = QHBoxLayout(self)
+        self.headerHorizontalLayout = QHBoxLayout(self)
 
         self.frame = FFrame(self, opacity=FFrame.Opacity.TRANSPARENT)
         self._verticalLayout = QVBoxLayout(self.frame)
 
         self.title = FLabel(FLabel.TextStyle.Body, self)
+        self.title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.title.hide()
         self._verticalLayout.addWidget(self.title)
 
         self.subtitle = FLabel(FLabel.TextStyle.Caption, self)
+        self.subtitle.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.subtitle.hide()
         self._verticalLayout.addWidget(self.subtitle)
 
-        self.headerhorizontalLayout.addWidget(self.frame)
+        self.headerHorizontalLayout.addWidget(self.frame)
 
-        self.headerLayout = QHBoxLayout()
+        self.headerLayoutWidget = QWidget(self)
+        self.headerLayoutWidget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.headerLayout = QHBoxLayout(self.headerLayoutWidget)
         self.headerLayout.setDirection(QBoxLayout.Direction.RightToLeft)
         self.headerLayout.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.headerLayout.setSpacing(10)
-        self.headerhorizontalLayout.addLayout(self.headerLayout)
+        self.headerHorizontalLayout.addWidget(self.headerLayoutWidget)
 
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if self._expandDirection in [FExpander.ExpandDirection.Expand_Down, FExpander.ExpandDirection.Expand_Up]:
+        if self._expandDirection in [FExpander.ExpandDirection.DOWN, FExpander.ExpandDirection.UP]:
             self.arrowAniYA.onPress()
         else:
             self.arrowAniX.onPress()
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if self._expandDirection in [FExpander.ExpandDirection.Expand_Down, FExpander.ExpandDirection.Expand_Up]:
+        if self._expandDirection in [FExpander.ExpandDirection.DOWN, FExpander.ExpandDirection.UP]:
             self.parent().eventFilter(self, event)
             self.arrowAniYA.onRelease()
         else:
@@ -146,13 +151,13 @@ class FExpanderHeader(QWidget):
 
             painter.fillPath(path, color.getColor())
 
-            if self._expandDirection in [FExpander.ExpandDirection.Expand_Down, FExpander.ExpandDirection.Expand_Up]:
+            if self._expandDirection in [FExpander.ExpandDirection.DOWN, FExpander.ExpandDirection.UP]:
                 rect = QRectF(self.width() - 30, self.height() / 2 - 5 + self.arrowAniYA.y, 10, 10)
                 painter.translate(rect.center())
                 painter.rotate(self.arrowAniYA.angle)
                 self._drawDropDownIcon(painter, QRectF(-5, -5, 10, 10))
 
-            elif self._expandDirection == FExpander.ExpandDirection.Open_Left:
+            elif self._expandDirection == FExpander.ExpandDirection.LEFT:
                 rect = QRectF(self.width() - 30 - self.arrowAniX.offset, self.height() / 2 - 5, 10, 10)
                 painter.translate(rect.center())
                 painter.rotate(-90)
@@ -176,9 +181,9 @@ class FExpander(QWidget):
 
     class ExpandDirection(Enum):
         NONE = 0
-        Open_Left = 1
-        Expand_Down = 2
-        Expand_Up = 3
+        LEFT = 1
+        DOWN = 2
+        UP = 3
 
     @Overload
     def __init__(self, parent: Optional[QWidget] = None):
@@ -198,7 +203,7 @@ class FExpander(QWidget):
         self.setIcon(self._icon)
 
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-        self.setExpandDirection(self.ExpandDirection.Expand_Down)
+        self.setExpandDirection(self.ExpandDirection.DOWN)
 
         self._contentFrame.installEventFilter(self)
 
@@ -247,16 +252,16 @@ class FExpander(QWidget):
     def setExpandDirection(self, expandDirection: ExpandDirection) -> None:
         self.updateGeometry()
 
-        if expandDirection == self.ExpandDirection.Expand_Down:
+        if expandDirection == self.ExpandDirection.DOWN:
             self._header.arrowAniYA.onRelease(angle=0)
-        elif expandDirection == self.ExpandDirection.Expand_Up:
+        elif expandDirection == self.ExpandDirection.UP:
             self._header.arrowAniYA.onRelease(angle=180)
 
         was_expanded = self.isExpanded()
         if was_expanded:
             self._setExpanded(False)
 
-        if self.ani_manager and expandDirection in [self.ExpandDirection.Expand_Down, self.ExpandDirection.Expand_Up] and was_expanded:
+        if self.ani_manager and expandDirection in [self.ExpandDirection.DOWN, self.ExpandDirection.UP] and was_expanded:
             self.ani_manager.ani.finished.connect(lambda: self._header.setExpandDirection(expandDirection))
             self.ani_manager.ani.finished.connect(self._updateHeaderPos)
         else:
@@ -268,27 +273,27 @@ class FExpander(QWidget):
 
     def setExpanded(self, expanded: bool) -> None:
         if expanded != self.isExpanded():
-            if self.expandDirection() in [self.ExpandDirection.Expand_Down, self.ExpandDirection.Expand_Up]:
+            if self.expandDirection() in [self.ExpandDirection.DOWN, self.ExpandDirection.UP]:
                 self._setExpanded(expanded)
 
     def _setExpanded(self, expanded: bool) -> None:
         if expanded != self.isExpanded():
 
-            if self.expandDirection() in [self.ExpandDirection.Expand_Down, self.ExpandDirection.Expand_Up]:
+            if self.expandDirection() in [self.ExpandDirection.DOWN, self.ExpandDirection.UP]:
                 if self.isExpanded():
-                    if self.expandDirection() == self.ExpandDirection.Expand_Down:
+                    if self.expandDirection() == self.ExpandDirection.DOWN:
                         self.ani_manager = WidgetAnimationManager.make(self._contentFrame, WidgetAnimationType.PULL_BACK_UP)
                     else:
                         self.ani_manager = WidgetAnimationManager.make(self._contentFrame, WidgetAnimationType.DROP_BACK_DOWN)
 
                 else:
-                    if self.expandDirection() == self.ExpandDirection.Expand_Down:
+                    if self.expandDirection() == self.ExpandDirection.DOWN:
                         self.ani_manager = WidgetAnimationManager.make(self._contentFrame, WidgetAnimationType.DROP_DOWN)
                     else:
                         self.ani_manager = WidgetAnimationManager.make(self._contentFrame, WidgetAnimationType.PULL_UP)
                     # self.ani_manager.ani.finished.connect(self._contentFrame.clearMask)
 
-                if self.expandDirection() == self.ExpandDirection.Expand_Down:
+                if self.expandDirection() == self.ExpandDirection.DOWN:
                     self.ani_manager.exec(QPoint(0, self._header.height()), self._contentFrame.height(), globalPos=False, aniDuration=200)
                 else:
                     self.ani_manager.exec(QPoint(0, 0), self._header.height(), globalPos=False, aniDuration=200, mask=False)
@@ -317,9 +322,9 @@ class FExpander(QWidget):
         return self._header.headerLayout
 
     def setHeaderLayout(self, layout: QBoxLayout) -> None:
-        self._header.headerhorizontalLayout.removeItem(self.headerLayout)
+        self._header.headerHorizontalLayout.deleteLater()
         self._header.headerLayout = layout
-        self._header.headerhorizontalLayout.addLayout(self._header.headerLayout)
+        self._header.headerLayoutWidget.setLayout(layout)
 
     def contentFrame(self) -> FFrame:
         return self._contentFrame
@@ -336,7 +341,7 @@ class FExpander(QWidget):
         return max(min(self._contentFrame.sizeHint().height(), self._contentFrame.maximumHeight()), self._contentFrame.minimumHeight())
 
     def _updateHeaderPos(self) -> None:
-        if self.expandDirection() == self.ExpandDirection.Expand_Up:
+        if self.expandDirection() == self.ExpandDirection.UP:
             self._header.move(0, self.height()-self._header.height())
         else:
             self._header.move(0, 0)
@@ -344,7 +349,7 @@ class FExpander(QWidget):
         self._updateFrameMask()
 
     def _updateFramePos(self) -> None:
-        if self.expandDirection() == self.ExpandDirection.Expand_Up:
+        if self.expandDirection() == self.ExpandDirection.UP:
             self._contentFrame.move(0, self._header.height())
         else:
             self._contentFrame.move(0, self._header.height() - self._get_content_frame_height())
@@ -354,7 +359,7 @@ class FExpander(QWidget):
         m = self._contentFrame.contentsMargins()
         w = self.width() + m.left() + m.right()
         h = self._get_content_frame_height() + m.top() + m.bottom()
-        if self.expandDirection() == self.ExpandDirection.Expand_Up:
+        if self.expandDirection() == self.ExpandDirection.UP:
             self._contentFrame.setMask(QRegion(0, -2 * self._contentFrame.y(), w, h))
         else:
             self._contentFrame.setMask(QRegion(0, self._header.height() - self._contentFrame.y(), w, h))
@@ -365,7 +370,7 @@ class FExpander(QWidget):
         h = self._header.height() + self._get_content_frame_min_height()
 
         if self.sizePolicy().verticalPolicy() in [QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding]:
-            h = self._get_content_frame_min_height() + self._contentFrame.y()*(1-2*(self.expandDirection() == self.ExpandDirection.Expand_Up)) + self._header.height()*(self.expandDirection() == self.ExpandDirection.Expand_Up)
+            h = self._get_content_frame_min_height() + self._contentFrame.y() * (1 - 2 * (self.expandDirection() == self.ExpandDirection.UP)) + self._header.height() * (self.expandDirection() == self.ExpandDirection.UP)
         return QSize(w, h)
 
     def setFixedHeight(self, h: int) -> None:
@@ -380,7 +385,7 @@ class FExpander(QWidget):
         h = self._header.height() + self._get_content_frame_height()
 
         if self.sizePolicy().verticalPolicy() in [QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding]:
-            h = self._get_content_frame_height() + self._contentFrame.y()*(1-2*(self.expandDirection() == self.ExpandDirection.Expand_Up)) + self._header.height()*(self.expandDirection() == self.ExpandDirection.Expand_Up)
+            h = self._get_content_frame_height() + self._contentFrame.y() * (1 - 2 * (self.expandDirection() == self.ExpandDirection.UP)) + self._header.height() * (self.expandDirection() == self.ExpandDirection.UP)
         return QSize(w, h)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
@@ -393,7 +398,7 @@ class FExpander(QWidget):
             self._updateFramePos()
         self._updateFrameMask()
 
-        if self.expandDirection() == self.ExpandDirection.Expand_Up:
+        if self.expandDirection() == self.ExpandDirection.UP:
             self._header.move(0, self.height()-self._header.height())
         else:
             self._header.move(0, 0)
