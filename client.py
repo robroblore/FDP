@@ -4,13 +4,16 @@ import main
 
 
 class Client:
-    def __init__(self, login):
+
+    def __init__(self, login, isHost):
         self.FORMAT = main.DEFAULT_FORMAT
         self.HEADERDATALEN = main.DEFAULT_HEADERDATALEN
         self.PORT = main.DEFAULT_PORT
+        self.DataType = main.DataType
 
         self.SERVER = None
         self.LOGIN = login
+        self.isHost = isHost
 
         self.isConnected = False
 
@@ -40,9 +43,47 @@ class Client:
         self.listener = threading.Thread(target=self.listen)
         self.listener.start()
 
+    def send(self, data_type: int, data):
+        """
+        Sent data to the server
+
+        Persistent header information:
+            - Data type {0: Debug, 1: Command, 2: File}
+            - Data length
+
+        Optional header information (for files):
+            - File name size
+            - File name
+        """
+
+        self.client.send(str(data_type).encode(self.FORMAT))
+
+        match data_type:
+            case self.DataType.DEBUG:
+                # Debug message
+                self.client.send(str(len(data)).encode(self.FORMAT))
+                self.client.send(data.encode(self.FORMAT))
+
+            case self.DataType.COMMAND:
+                # Command
+                self.client.send(str(len(data)).encode(self.FORMAT))
+                self.client.send(data.encode(self.FORMAT))
+
+            case self.DataType.FILE:
+                # File
+                self.client.send(str(len(data)).encode(self.FORMAT))
+                file_name = "filename.txt"
+                self.client.send(str(len(file_name)).encode(self.FORMAT))
+                self.client.send(file_name.encode(self.FORMAT))
+
+            case _:
+                # Invalid data type
+                print("Invalid data type")
+                return
+
     def receive(self):
         """
-        Receive a message from the server
+        Receive data from the server
 
         Persistent header information:
             - Data type {0: Debug, 1: Command, 2: File}
@@ -61,19 +102,19 @@ class Client:
         data_length = int(self.client.recv(self.HEADERDATALEN).decode(self.FORMAT))
 
         match data_type:
-            case 0:
+            case self.DataType.DEBUG:
                 # Debug message
                 if data_length:
                     debug_message = self.client.recv(data_length).decode(self.FORMAT)
                     print(f"[DEBUG] {debug_message}")
 
-            case 1:
+            case self.DataType.COMMAND:
                 # Command
                 if data_length:
-                    Command = self.client.recv(data_length).decode(self.FORMAT)
-                    print(f"[COMMAND] {Command}")
+                    command = self.client.recv(data_length).decode(self.FORMAT)
+                    print(f"[COMMAND] {command}")
 
-            case 2:
+            case self.DataType.FILE:
                 # File
                 file_name_len = int(self.client.recv(self.HEADERDATALEN).decode(self.FORMAT))
                 file_name = self.client.recv(file_name_len).decode(self.FORMAT)
@@ -84,12 +125,9 @@ class Client:
                 print("Invalid data type")
                 return
 
-        pass
-
     def listen(self):
         """
         Continuously listen for messages from the server
         """
         while self.isConnected:
             self.receive()
-            pass

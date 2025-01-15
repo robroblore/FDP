@@ -8,6 +8,7 @@ class Server:
         self.FORMAT = main.DEFAULT_FORMAT
         self.HEADERDATALEN = main.DEFAULT_HEADERDATALEN
         self.PORT = main.DEFAULT_PORT
+        self.DataType = main.DataType
 
         self.SERVER_IP = socket.gethostbyname(socket.gethostname())
         self.ADDR = (self.SERVER_IP, main.DEFAULT_PORT)
@@ -19,7 +20,7 @@ class Server:
 
         self.CLIENTS = dict()
 
-    def handle_client(self, conn):
+    def handle_client(self, conn): # TODO: Use threading for file transfer so app doesnt freeze
         # Get client name
         login = conn.recv(64).decode(self.FORMAT)
         self.CLIENTS[login] = conn
@@ -27,8 +28,35 @@ class Server:
 
         while True:
             try:
-                pass
-            except:
+                data_type = int(conn.recv(1).decode(self.FORMAT))
+
+                data_length = int(conn.recv(self.HEADERDATALEN).decode(self.FORMAT))
+
+                match data_type:
+                    case self.DataType.DEBUG:
+                        # Debug message
+                        if data_length:
+                            debug_message = conn.recv(data_length).decode(self.FORMAT)
+                            print(f"[DEBUG] {debug_message}")
+
+                    case self.DataType.COMMAND:
+                        # Command
+                        if data_length:
+                            command = conn.recv(data_length).decode(self.FORMAT)
+                            print(f"[COMMAND] {command}")
+
+                    case self.DataType.FILE:
+                        # File
+                        file_name_len = int(conn.recv(self.HEADERDATALEN).decode(self.FORMAT))
+                        file_name = conn.recv(file_name_len).decode(self.FORMAT)
+                        print("[FILE] Receiving file: ", file_name)
+
+                    case _:
+                        # Invalid data type
+                        print("Invalid data type")
+                        return
+            except Exception as err:
+                print(f"Unexpected {err=}, {type(err)=}")
                 break
 
         print(f"{login} has disconnected from the server")
