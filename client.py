@@ -119,6 +119,11 @@ class Client:
                 self.isConnected = False
                 self.client.close()
 
+            case self.DataType.FILES_INFO:
+                # Files info
+                # Send no data as we want to signal to send us the files info
+                self.client.send("0".encode(self.FORMAT))
+
             case _:
                 # Invalid data type
                 print("Invalid data type")
@@ -162,6 +167,11 @@ class Client:
                 file_name_len = int(self.client.recv(self.HEADERDATALEN).decode(self.FORMAT))
                 file_name = self.client.recv(file_name_len).decode(self.FORMAT)
                 print("[FILE] Receiving file: ", file_name)
+
+            case self.DataType.FILES_INFO:
+                # Files info
+                files_info = self.client.recv(data_length).decode(self.FORMAT)
+                print("[FILES_INFO] ", files_info)
 
             case _:
                 # Invalid data type

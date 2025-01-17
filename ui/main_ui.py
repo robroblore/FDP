@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 
 from qtpy.QtCore import Property, Qt
 from qtpy.QtWidgets import QApplication, QWidget, QVBoxLayout, QScrollArea, QSizePolicy, QFileDialog
@@ -10,7 +11,9 @@ from FluentQt import fTheme, Theme
 from FluentQt.common.overload import Overload
 from FluentQt.widgets import FMainWindow, FPushButton
 from FluentQt.widgets.expander import FExpander
+from client import Client
 from main import DataType
+from server import Server
 
 
 class FileWidget(FExpander):
@@ -89,6 +92,8 @@ class FileList(QWidget):
         scroll_area.setWidget(self.scroll_content)
 
         self.layout = QVBoxLayout(self.scroll_content)
+
+        self.client.send(DataType.FILES_INFO, "")
 
         # TODO Testing code
         button = FPushButton("Add File", self)
@@ -204,7 +209,11 @@ class MainWindow(FMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     fTheme.set_app(app, Theme.DARK, True)
-    main_window = MainWindow(None)
+    server = Server()
+    threading.Thread(target=server.start).start()
+    client = Client("test", True)
+    client.connect()
+    main_window = MainWindow(client)
     main_window.resize(600, 600)
     main_window.show()
 

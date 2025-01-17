@@ -57,6 +57,17 @@ class Server:
                         print("[FILE] Receiving file: ", file_name)
 
                         # TODO: RECEIVE FILES
+                    case self.DataType.FILES_INFO:
+                        # Files info
+                        data = "hello world"
+                        data_size = len(data)
+                        data_size_info = str(data_size).encode(self.FORMAT)
+                        data_size_info += b' ' * (self.HEADERDATALEN - len(data_size_info))
+
+                        conn.send(str(data_type).encode(self.FORMAT))
+                        conn.send(data_size_info)
+                        conn.send(data.encode(self.FORMAT))
+
 
                     case _:
                         # Invalid data type

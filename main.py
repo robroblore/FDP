@@ -21,8 +21,10 @@ class DataType(IntEnum):
     DEBUG = 0
     COMMAND = 1
     FILE = 2
-    DISCONNECT = 3
+    FILES_INFO = 3
+    DISCONNECT = 4
 
+DEFAULT_SERVER_FILE_SAVE_PATH = "server_files"
 
 if __name__ == "__main__":
     local = None
