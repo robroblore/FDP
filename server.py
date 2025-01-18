@@ -1,6 +1,11 @@
+import json
+import os
+import selectors
 import socket
-import threading
+import types
+
 import main
+from tools import receive_data, send_data, DataType, receive_file, send_file
 
 
 class Server:
@@ -8,88 +13,180 @@ class Server:
         self.FORMAT = main.DEFAULT_FORMAT
         self.HEADERDATALEN = main.DEFAULT_HEADERDATALEN
         self.PORT = main.DEFAULT_PORT
-        self.DataType = main.DataType
+        self.SERVER_FILES_SAVE_PATH = main.DEFAULT_SERVER_FILES_SAVE_PATH
+        self.FILE_CHUNK_SIZE = 1024
 
         self.SERVER_IP = socket.gethostbyname(socket.gethostname())
-        self.ADDR = (self.SERVER_IP, main.DEFAULT_PORT)
-
-        # Create a socket object (AF_INET = IPv4, SOCK_STREAM = TCP)
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # Bind the socket to the port 6969
-        self.server.bind(self.ADDR)
 
         self.CLIENTS = dict()
+        self.selector = selectors.DefaultSelector()
 
     # TODO: Use threading for file transfer so app doesnt freeze
     # TODO: Check file hash to ensure file integrity
-    def handle_client(self, conn):
+    def handle_client(self, key: selectors.SelectorKey, mask: int):
+        conn: socket.socket = key.fileobj
+
+        if mask & selectors.EVENT_READ:
+            data_type = int(receive_data(conn, 1).decode(self.FORMAT))
+
+            if data_type == DataType.DISCONNECT:
+                self.close_client(conn)
+
+            match data_type:
+                case DataType.DEBUG:
+                    # Debug message
+                    data_length = int(receive_data(conn, self.HEADERDATALEN).decode(self.FORMAT))
+                    if data_length:
+                        debug_message = receive_data(conn, data_length).decode(self.FORMAT)
+                        print(f"[DEBUG] {debug_message}")
+
+                case DataType.COMMAND:
+                    # Command
+                    data_length = int(receive_data(conn, self.HEADERDATALEN).decode(self.FORMAT))
+                    if data_length:
+                        command = receive_data(conn, data_length).decode(self.FORMAT)
+                        print(f"[COMMAND] {command}")
+
+                case DataType.UPLOAD_FILE:
+                    print("[DEBUG] Receiving file")
+                    receive_file(conn, self.HEADERDATALEN, self.FORMAT, self.FILE_CHUNK_SIZE, self.SERVER_FILES_SAVE_PATH)
+                    self.send_files_info()
+
+                case DataType.DOWNLOAD_FILE:
+                    file_name_size = int(receive_data(conn, self.HEADERDATALEN).decode(self.FORMAT))
+                    file_name = receive_data(conn, file_name_size).decode(self.FORMAT)
+
+                    file_path_hash_size = int(receive_data(conn, self.HEADERDATALEN).decode(self.FORMAT))
+                    file_path_hash = receive_data(conn, file_path_hash_size).decode(self.FORMAT)
+
+                    send_data(conn, str(DataType.DOWNLOAD_FILE).encode(self.FORMAT), 1)
+                    send_data(conn, str(file_path_hash_size).encode(self.FORMAT), self.HEADERDATALEN)
+                    send_data(conn, file_path_hash.encode(self.FORMAT), len(file_path_hash))
+
+                    file_path = os.path.join(self.SERVER_FILES_SAVE_PATH, file_name)
+                    send_file(conn, file_path, self.HEADERDATALEN, self.FORMAT, self.FILE_CHUNK_SIZE, send_file_name=False)
+
+                case DataType.FILES_INFO:
+                    self.send_files_info(conn)
+
+                case DataType.DELETE_FILE:
+                    file_name_size = int(receive_data(conn, self.HEADERDATALEN).decode(self.FORMAT))
+                    file_name = receive_data(conn, file_name_size).decode(self.FORMAT)
+                    file_path = os.path.join(self.SERVER_FILES_SAVE_PATH, file_name)
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        print(f"[DEBUG] Deleting file: {file_name}")
+                        self.send_files_info()
+                    else:
+                        print(f"[DEBUG] File {file_name} does not exist")
+
+                case _:
+                    # Invalid data type
+                    print("Invalid data type")
+                    return
+
+    def send_files_info(self, conn=None):
+        """
+        Sends information about the files stored on the server to the clients.
+        """
+
+        print("[DEBUG] Sending files info")
+        data = str(self.get_server_files_info()).encode(self.FORMAT)
+        data_size = len(data)
+        data_size_info = str(data_size).encode(self.FORMAT)
+
+        if conn is not None:
+            send_data(conn, str(DataType.FILES_INFO).encode(self.FORMAT), 1)
+            send_data(conn, data_size_info, self.HEADERDATALEN)
+            send_data(conn, data, data_size)
+        else:
+            for client in self.CLIENTS.values():
+                send_data(client, str(DataType.FILES_INFO).encode(self.FORMAT), 1)
+                send_data(client, data_size_info, self.HEADERDATALEN)
+                send_data(client, data, data_size)
+
+    def get_server_files_info(self):
+        """
+        Returns a list of dictionaries containing information about the files stored on the server.
+        """
+
+        files_info = []
+        if os.path.exists(self.SERVER_FILES_SAVE_PATH):
+            for file_name in os.listdir(self.SERVER_FILES_SAVE_PATH):
+                file_path = os.path.join(self.SERVER_FILES_SAVE_PATH, file_name)
+                file_size = os.path.getsize(file_path)
+                files_info.append({
+                    "file_name": file_name,
+                    "file_size": file_size
+                })
+        return json.dumps(files_info)
+
+    def start(self):
+        """
+        Starts the server and listens for incoming connections.
+        """
+
+        print(f"Starting server on {self.SERVER_IP}:{self.PORT}")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener_socket:
+            listener_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener_socket.bind((self.SERVER_IP, self.PORT))
+            listener_socket.listen()
+            print(f"Listening on {self.SERVER_IP}:{self.PORT}")
+            self.selector.register(listener_socket, selectors.EVENT_READ)
+
+            while True:
+                events = self.selector.select(timeout=None)
+                for key, mask in events:
+                    if key.data is None:
+                        self.accept_connection(key.fileobj)
+                    else:
+                        try:
+                            self.handle_client(key, mask)
+                        except ConnectionResetError:
+                            self.close_client(key.fileobj)
+
+    def restart(self) -> None:
+        """
+        Closes all client connections and restarts the server.
+        """
+
+        self.selector.close()
+        self.selector = selectors.DefaultSelector()
+
+        for client in self.CLIENTS.values():
+            client.close()
+        self.CLIENTS.clear()
+
+        self.start()
+        print("Server restarted")
+
+    def accept_connection(self, listener_socket: socket.socket) -> None:
+        """
+        Accepts a new connection from a client.
+        """
+
+        conn, addr = listener_socket.accept()
+        data = types.SimpleNamespace(addr=addr)
+        events = selectors.EVENT_READ | selectors.EVENT_WRITE
+        self.selector.register(conn, events, data=data)
+
         # Get client name
-        login = conn.recv(64).decode(self.FORMAT)
+        login = receive_data(conn, 64).decode(self.FORMAT).strip(' ')
         self.CLIENTS[login] = conn
         print(f"{login} has connected to the server from {conn.getpeername()}")
 
-        while True:
-            try:
-                data_type = int(conn.recv(1).decode(self.FORMAT))
+    def close_client(self, sock: socket.socket) -> None:
+        """
+        Closes and unregisters a client socket.
+        """
 
-                if data_type == self.DataType.DISCONNECT:
-                    break
+        self.selector.unregister(sock)
+        sock.close()
+        for login, client in list(self.CLIENTS.items()):
+            if client == sock:
+                print(f"{login} has disconnected from the server")
+                del self.CLIENTS[login]
 
-                data_length = int(conn.recv(self.HEADERDATALEN).decode(self.FORMAT))
-
-                match data_type:
-                    case self.DataType.DEBUG:
-                        # Debug message
-                        if data_length:
-                            debug_message = conn.recv(data_length).decode(self.FORMAT)
-                            print(f"[DEBUG] {debug_message}")
-
-                    case self.DataType.COMMAND:
-                        # Command
-                        if data_length:
-                            command = conn.recv(data_length).decode(self.FORMAT)
-                            print(f"[COMMAND] {command}")
-
-                    case self.DataType.FILE:
-                        # File
-                        file_name_len = int(conn.recv(self.HEADERDATALEN).decode(self.FORMAT))
-                        file_name = conn.recv(file_name_len).decode(self.FORMAT)
-                        print("[FILE] Receiving file: ", file_name)
-
-                        # TODO: RECEIVE FILES
-                    case self.DataType.FILES_INFO:
-                        # Files info
-                        data = "hello world"
-                        data_size = len(data)
-                        data_size_info = str(data_size).encode(self.FORMAT)
-                        data_size_info += b' ' * (self.HEADERDATALEN - len(data_size_info))
-
-                        conn.send(str(data_type).encode(self.FORMAT))
-                        conn.send(data_size_info)
-                        conn.send(data.encode(self.FORMAT))
-
-
-                    case _:
-                        # Invalid data type
-                        print("Invalid data type")
-                        return
-            except Exception as err:
-                print(f"Unexpected {err=}, {type(err)=}")
-                break
-
-        print(f"{login} has disconnected from the server")
-        del self.CLIENTS[login]
-        conn.close()
-
-    def start(self):
-        # Listen for incoming connections
-        self.server.listen()
-        print(f"Server is listening on {self.SERVER_IP}:{self.PORT}")
-        while True:
-            # Accept the connection
-            conn, addr = self.server.accept()
-            # Print the address of the connected client
-            print(f"Connection from {addr} has been established.")
-            # Start a new thread to handle the connection
-            thread = threading.Thread(target=self.handle_client, args=(conn,))
-            thread.start()
+if __name__ == "__main__":
+    server = Server()
+    server.start()

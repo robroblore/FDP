@@ -1,35 +1,44 @@
+import json
 import socket
 import threading
+
+from PySide6.QtCore import QObject
+from qtpy.QtCore import Signal
+from tqdm import tqdm
+
 import main
 import os
 
+from tools import receive_data, send_data, DataType, send_file, receive_file
 
-class Client:
 
-    def __init__(self, login, isHost):
+# Inherit from QObject to be able to use signals
+class Client(QObject):
+    files_info_received = Signal(list)
+
+    def __init__(self, login):
+        super().__init__()
         self.FORMAT = main.DEFAULT_FORMAT
         self.HEADERDATALEN = main.DEFAULT_HEADERDATALEN
         self.PORT = main.DEFAULT_PORT
-        self.DataType = main.DataType
         self.FILE_CHUNK_SIZE = 1024
 
         self.SERVER = None
         self.LOGIN = login
-        self.isHost = isHost
 
         self.isConnected = False
 
         # Create a socket object (AF_INET = IPv4, SOCK_STREAM = TCP)
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
+        # Dictionary to store the file paths to save files, with the hash of the file path as the key
+        # Used to know which file the server is sending us
+        self.paths_to_save_files = {}
+
         self.listener = None
 
-    def connect(self):
-
-        if self.isHost:
-            self.SERVER = socket.gethostbyname(socket.gethostname())
-        else:
-            self.SERVER = input("Enter the server IP (10.xxx.xxx.xxx): ")
+    def connect_to_server(self, server_ip):
+        self.SERVER = server_ip
 
         try:
             # Connect to the server
@@ -41,88 +50,67 @@ class Client:
             print(f"Unexpected {err=}, {type(err)=}")
             return
 
-        self.client.send(self.LOGIN.encode(self.FORMAT))
+        send_data(self.client, self.LOGIN.encode(self.FORMAT), 64)
 
         # Listen for messages from the server and be able to send messages to the server at the same time using
         # threading
-        self.listener = threading.Thread(target=self.listen)
+        self.listener = threading.Thread(target=self.listen, daemon=True)
         self.listener.start()
 
-    def send(self, data_type: int, data: str):
+    def send(self, data_type: int, data: str = ""):
         """
         Sent data to the server
 
         Persistent header information:
-            - Data type {0: Debug, 1: Command, 2: File}
-            - Data length
-
-        Optional header information (for files):
-            - File name size
-            - File name
+            - Data type {0: Debug, 1: Command, 2: Upload file, 3: Download file, 4: Files info, 5: Delete file, 6: Disconnect}
         """
 
-        if data_type == self.DataType.FILE:
-            if not os.path.exists(data):
-                print("File does not exist")
-                return
+        if not self.isConnected:
+            print("Not connected to the server")
+            return
 
-            data_size = os.path.getsize(data)
-        else:
-            data_size = len(data)
-
-        self.client.send(str(data_type).encode(self.FORMAT))
-
-        data_size_info = str(data_size).encode(self.FORMAT)
-        data_size_info += b' ' * (self.HEADERDATALEN - len(data_size_info))
+        send_data(self.client, str(data_type).encode(self.FORMAT), len(str(data_type)))
 
         match data_type:
-            case self.DataType.DEBUG:
+            case DataType.DEBUG:
                 # Debug message
                 data = data.encode(self.FORMAT)
-                self.client.send(data_size_info)
-                self.client.send(data)
+                data_size = str(len(data)).encode(self.FORMAT)
 
-            case self.DataType.COMMAND:
+                send_data(self.client, data_size, self.HEADERDATALEN)
+                send_data(self.client, data, len(data))
+
+            case DataType.COMMAND:
                 # Command
                 data = data.encode(self.FORMAT)
-                self.client.send(data_size_info)
-                self.client.send(data)
+                data_size = str(len(data)).encode(self.FORMAT)
 
-            case self.DataType.FILE:
-                # File -> data = file path
-                # Could use socket.sendfile() but where's the fun in that?
-                self.client.send(data_size_info)
-                file_name = data.split("//")[-1]
-                self.client.send(str(len(file_name)).encode(self.FORMAT))
-                self.client.send(file_name.encode(self.FORMAT))
+                send_data(self.client, data_size, self.HEADERDATALEN)
+                send_data(self.client, data, len(data))
 
-                print("[FILE] Started sending file: ", file_name)
+            case DataType.UPLOAD_FILE:
+                # Upload file -> data = file path
+                print("[DEBUG] Uploading file")
+                send_file(self.client, data, self.HEADERDATALEN, self.FORMAT, self.FILE_CHUNK_SIZE)
 
-                chunks = data_size // self.FILE_CHUNK_SIZE
-                remaining_data = data_size % self.FILE_CHUNK_SIZE
-                print("[DEBUG] File size: ", data_size)
-                print("[DEBUG] Number of chunks: ", data_size)
-                print("[DEBUG] Remaining data: ", remaining_data)
+            case DataType.FILES_INFO:
+                # Files info
+                # Send no data as we want to signal the server to send us the files info
+                print("[DEBUG] Requesting files info")
 
-                counter = 0
-                with open(data, "rb") as file:
-                    for size in [chunks * self.FILE_CHUNK_SIZE, remaining_data]:
-                        print(f"Sent {counter} chunk(s) out of {chunks + 1} ({(chunks+1) / counter})")
-                        file_data = file.read(size)
-                        if not file_data:
-                            break
-                        self.client.send(file_data)
-                        counter += 1
+            case DataType.DELETE_FILE:
+                # Delete file -> data = file name
+                print("[DEBUG] Deleting file")
+                file_name = data.encode(self.FORMAT)
+                file_name_size = str(len(file_name)).encode(self.FORMAT)
 
-            case self.DataType.DISCONNECT:
+                send_data(self.client, file_name_size, self.HEADERDATALEN)
+                send_data(self.client, file_name, len(file_name))
+
+            case DataType.DISCONNECT:
                 # Disconnect
                 self.isConnected = False
                 self.client.close()
-
-            case self.DataType.FILES_INFO:
-                # Files info
-                # Send no data as we want to signal to send us the files info
-                self.client.send("0".encode(self.FORMAT))
 
             case _:
                 # Invalid data type
@@ -142,36 +130,44 @@ class Client:
             - File name
         """
 
-        try:
-            data_type = int(self.client.recv(1).decode(self.FORMAT))
-        except:
+        data_received = receive_data(self.client, 1)
+        if not data_received:
+            print("Connection closed")
+            self.isConnected = False
+            self.client.close()
             return
-
-        data_length = int(self.client.recv(self.HEADERDATALEN).decode(self.FORMAT))
+        data_type = int(data_received.decode(self.FORMAT))
 
         match data_type:
-            case self.DataType.DEBUG:
+            case DataType.DEBUG:
                 # Debug message
+                data_length = int(receive_data(self.client, self.HEADERDATALEN).decode(self.FORMAT))
                 if data_length:
-                    debug_message = self.client.recv(data_length).decode(self.FORMAT)
+                    debug_message = receive_data(self.client, data_length).decode(self.FORMAT)
                     print(f"[DEBUG] {debug_message}")
 
-            case self.DataType.COMMAND:
+            case DataType.COMMAND:
                 # Command
+                data_length = int(receive_data(self.client, self.HEADERDATALEN).decode(self.FORMAT))
                 if data_length:
-                    command = self.client.recv(data_length).decode(self.FORMAT)
+                    command = receive_data(self.client, data_length).decode(self.FORMAT)
                     print(f"[COMMAND] {command}")
 
-            case self.DataType.FILE:
+            case DataType.DOWNLOAD_FILE:
                 # File
-                file_name_len = int(self.client.recv(self.HEADERDATALEN).decode(self.FORMAT))
-                file_name = self.client.recv(file_name_len).decode(self.FORMAT)
-                print("[FILE] Receiving file: ", file_name)
+                print("[DEBUG] Downloading file")
+                file_path_hash_size = int(receive_data(self.client, self.HEADERDATALEN).decode(self.FORMAT))
+                file_path_hash = receive_data(self.client, file_path_hash_size).decode(self.FORMAT)
 
-            case self.DataType.FILES_INFO:
+                receive_file(self.client, self.HEADERDATALEN, self.FORMAT, self.FILE_CHUNK_SIZE, file_path=self.paths_to_save_files[str(file_path_hash)])
+                del self.paths_to_save_files[str(file_path_hash)]
+
+            case DataType.FILES_INFO:
                 # Files info
-                files_info = self.client.recv(data_length).decode(self.FORMAT)
-                print("[FILES_INFO] ", files_info)
+                print("[DEBUG] Receiving files info")
+                files_info_size = int(receive_data(self.client, self.HEADERDATALEN).decode(self.FORMAT))
+                files_info = receive_data(self.client, files_info_size).decode(self.FORMAT)
+                self.files_info_received.emit(json.loads(files_info))
 
             case _:
                 # Invalid data type
@@ -184,3 +180,25 @@ class Client:
         """
         while self.isConnected:
             self.receive()
+
+    def download_file(self, file_name, file_path):
+        """
+        Download a file from the server
+        """
+
+        send_data(self.client, str(DataType.DOWNLOAD_FILE).encode(self.FORMAT), len(str(DataType.DOWNLOAD_FILE)))
+
+        file_name = file_name.encode(self.FORMAT)
+        file_name_size = str(len(file_name)).encode(self.FORMAT)
+
+        send_data(self.client, file_name_size, self.HEADERDATALEN)
+        send_data(self.client, file_name, len(file_name))
+
+        file_path_hash = hash(file_path)
+        self.paths_to_save_files[str(file_path_hash)] = file_path
+
+        file_path_hash = str(file_path_hash).encode(self.FORMAT)
+        file_path_hash_size = str(len(file_path_hash)).encode(self.FORMAT)
+
+        send_data(self.client, file_path_hash_size, self.HEADERDATALEN)
+        send_data(self.client, file_path_hash, len(file_path_hash))

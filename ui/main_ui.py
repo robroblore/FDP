@@ -1,19 +1,18 @@
 import os
+import random
+import socket
 import sys
 import threading
 
 from qtpy.QtCore import Property, Qt
 from qtpy.QtWidgets import QApplication, QWidget, QVBoxLayout, QScrollArea, QSizePolicy, QFileDialog
 
-import pywintypes
-
 from FluentQt import fTheme, Theme
 from FluentQt.common.overload import Overload
 from FluentQt.widgets import FMainWindow, FPushButton
 from FluentQt.widgets.expander import FExpander
 from client import Client
-from main import DataType
-from server import Server
+from tools import DataType
 
 
 class FileWidget(FExpander):
@@ -44,18 +43,12 @@ class FileWidget(FExpander):
         self.setSubtitle(f"{self._file_size} bytes")
 
     def delete_file(self):
-        # TODO Send delete file command to server
-
-        # TODO Testing code
-        self.parent.delete_file(self._widget_id)
+        self.parent.client.send(DataType.DELETE_FILE, self._file_name)
 
     def download_file(self):
-        # TODO Send download file command to server
-
         file_save_url, _ = QFileDialog.getSaveFileName(self, "Save File", self._file_name)
-        print(file_save_url)
-
-
+        if file_save_url:
+            self.parent.client.download_file(self._file_name, file_save_url)
 
     WidgetId = Property(int, lambda self: self._widget_id)
 
@@ -93,15 +86,8 @@ class FileList(QWidget):
 
         self.layout = QVBoxLayout(self.scroll_content)
 
-        self.client.send(DataType.FILES_INFO, "")
-
-        # TODO Testing code
-        button = FPushButton("Add File", self)
-        self.layout.addWidget(button)
-        button.clicked.connect(lambda: self.add_file({
-            "file_name": "test2.txt",
-            "file_size": 300
-        }))
+        self.client.files_info_received.connect(self.set_files)
+        self.client.send(DataType.FILES_INFO)
 
     def set_files(self, files: list):
         self._files_data = files
@@ -174,13 +160,8 @@ class FileList(QWidget):
 
             for url in event.mimeData().urls():
                 if self.client is not None:
-                    self.client.send(DataType.FILE, str(url.toLocalFile()))
-
-                # TODO Testing code
-                self.add_file({
-                    "file_name": os.path.basename(str(url.toLocalFile())),
-                    "file_size": os.path.getsize(str(url.toLocalFile()))
-                })
+                    # TODO Use threading for file transfer so app doesnt freeze, make sure only one file at a time is sent
+                    self.client.send(DataType.UPLOAD_FILE, str(url.toLocalFile()))
         else:
             event.ignore()
 
@@ -193,26 +174,12 @@ class MainWindow(FMainWindow):
         file_list = FileList(client, self)
         self.setCentralWidget(file_list)
 
-        # TODO Testing code
-        file_list.set_files([
-            {
-                "file_name": "test0.txt",
-                "file_size": 100
-            },
-            {
-                "file_name": "test1.txt",
-                "file_size": 200
-            }
-        ])
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     fTheme.set_app(app, Theme.DARK, True)
-    server = Server()
-    threading.Thread(target=server.start).start()
-    client = Client("test", True)
-    client.connect()
+    client = Client(f"test client {random.randint(0, 100)}")
+    client.connect_to_server(socket.gethostbyname(socket.gethostname()))
     main_window = MainWindow(client)
     main_window.resize(600, 600)
     main_window.show()

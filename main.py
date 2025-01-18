@@ -1,11 +1,14 @@
 """
 FDP - File Delivery Protocol
 """
+import socket
 
 import server
 import client
 from enum import IntEnum
 import threading
+
+from tools import DataType
 
 # FORMAT = The format (encryption) of the message to be received
 DEFAULT_FORMAT = "utf-8"
@@ -14,17 +17,9 @@ DEFAULT_FORMAT = "utf-8"
 # the length of the message)
 DEFAULT_HEADERDATALEN = 64
 
-DEFAULT_PORT = 6969  # Default port number for the server
+DEFAULT_PORT = 6942  # Default port number for the server
 
-
-class DataType(IntEnum):
-    DEBUG = 0
-    COMMAND = 1
-    FILE = 2
-    FILES_INFO = 3
-    DISCONNECT = 4
-
-DEFAULT_SERVER_FILE_SAVE_PATH = "server_files"
+DEFAULT_SERVER_FILES_SAVE_PATH = "server_files"
 
 if __name__ == "__main__":
     local = None
@@ -38,7 +33,7 @@ if __name__ == "__main__":
 
     if isHost:
         server = server.Server()
-        thread = threading.Thread(target=start_server, args=(server,))
+        thread = threading.Thread(target=start_server, args=(server,), daemon=True)
         thread.start()
 
     login = ""
@@ -54,8 +49,12 @@ if __name__ == "__main__":
             print("Username must be less than 64 characters")
             login = ""
 
-    local_client = client.Client(login, isHost)
-    local_client.connect()
+    local_client = client.Client(login)
+    if not isHost:
+        server_ip = input("Enter the server IP (10.xxx.xxx.xxx): ")
+        local_client.connect_to_server(server_ip)
+    else:
+        local_client.connect_to_server(socket.gethostbyname(socket.gethostname()))
 
     while True:
         print("1. Send debug")
@@ -71,9 +70,9 @@ if __name__ == "__main__":
             case 2:
                 local_client.send(DataType.COMMAND, input("Enter command: "))
             case 3:
-                local_client.send(DataType.FILE, input("Enter file path: "))
+                local_client.send(DataType.UPLOAD_FILE, input("Enter file path: "))
             case 4:
-                local_client.send(DataType.DISCONNECT, "")
+                local_client.send(DataType.DISCONNECT)
                 break
             case _:
                 print("Invalid choice")
