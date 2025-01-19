@@ -32,15 +32,8 @@ def send_data(socket, data, data_len):
     while data_sent < data_len:
         data_sent += socket.send(data[data_sent:])
 
-def send_file(socket, file_path, HEADERDATALEN, FORMAT, FILE_CHUNK_SIZE, send_file_name=True):
+def send_file(socket, file_path, HEADERDATALEN, FORMAT, FILE_CHUNK_SIZE):
     # Could use socket.sendfile() but where's the fun in that?
-    if send_file_name:
-        file_name = os.path.basename(file_path).encode(FORMAT)
-        file_name_size = str(len(file_name)).encode(FORMAT)
-
-        send_data(socket, file_name_size, HEADERDATALEN)
-        send_data(socket, file_name, len(file_name))
-
     print("[FILE] Started sending file: ", os.path.basename(file_path))
 
     file_size = os.path.getsize(file_path)
@@ -60,16 +53,14 @@ def send_file(socket, file_path, HEADERDATALEN, FORMAT, FILE_CHUNK_SIZE, send_fi
                 break
             send_data(socket, file_data, size)
 
-def receive_file(socket, HEADERDATALEN, FORMAT, FILE_CHUNK_SIZE, file_save_dir=None, file_path=None):
-    if file_save_dir is not None and file_path is None:
-        file_name_size = int(receive_data(socket, HEADERDATALEN).decode(FORMAT))
-        file_name = receive_data(socket, file_name_size).decode(FORMAT)
+def receive_file(socket, HEADERDATALEN, FORMAT, FILE_CHUNK_SIZE, file_path):
+    if os.path.exists(file_path):
+        file_name, file_extension = os.path.splitext(file_path)
+        n = 1
+        while os.path.exists(f"{file_name} ({n}){file_extension}"):
+            n += 1
+        file_path = f"{file_name} ({n}){file_extension}"
 
-        if not os.path.exists(file_save_dir):
-            os.makedirs(file_save_dir)
-        file_path = os.path.join(file_save_dir, file_name)
-
-    # TODO: Check if file already exists, if so, rename it to f"{file_name} ({n})"
     print("[DEBUG] Receiving file: ", os.path.basename(file_path))
 
     file_size = int(receive_data(socket, HEADERDATALEN).decode(FORMAT))

@@ -49,10 +49,19 @@ class Server:
 
                 case DataType.UPLOAD_FILE:
                     print("[DEBUG] Receiving file")
-                    receive_file(conn, self.HEADERDATALEN, self.FORMAT, self.FILE_CHUNK_SIZE, self.SERVER_FILES_SAVE_PATH)
+
+                    file_name_size = int(receive_data(conn, self.HEADERDATALEN).decode(self.FORMAT))
+                    file_name = receive_data(conn, file_name_size).decode(self.FORMAT)
+
+                    if not os.path.exists(self.SERVER_FILES_SAVE_PATH):
+                        os.makedirs(self.SERVER_FILES_SAVE_PATH)
+                    file_path = os.path.join(self.SERVER_FILES_SAVE_PATH, file_name)
+
+                    receive_file(conn, self.HEADERDATALEN, self.FORMAT, self.FILE_CHUNK_SIZE, file_path)
                     self.send_files_info()
 
                 case DataType.DOWNLOAD_FILE:
+                    # Receive a hash of the file path to send it back to the client to tell it which file is being sent
                     file_name_size = int(receive_data(conn, self.HEADERDATALEN).decode(self.FORMAT))
                     file_name = receive_data(conn, file_name_size).decode(self.FORMAT)
 
@@ -64,7 +73,7 @@ class Server:
                     send_data(conn, file_path_hash.encode(self.FORMAT), len(file_path_hash))
 
                     file_path = os.path.join(self.SERVER_FILES_SAVE_PATH, file_name)
-                    send_file(conn, file_path, self.HEADERDATALEN, self.FORMAT, self.FILE_CHUNK_SIZE, send_file_name=False)
+                    send_file(conn, file_path, self.HEADERDATALEN, self.FORMAT, self.FILE_CHUNK_SIZE)
 
                 case DataType.FILES_INFO:
                     self.send_files_info(conn)
@@ -172,6 +181,12 @@ class Server:
 
         # Get client name
         login = receive_data(conn, 64).decode(self.FORMAT).strip(' ')
+        if login in self.CLIENTS:
+            print(f"{login} is already connected to the server")
+            send_data(conn, b'0', 1)
+            conn.close()
+            return
+        send_data(conn, b'1', 1)
         self.CLIENTS[login] = conn
         print(f"{login} has connected to the server from {conn.getpeername()}")
 

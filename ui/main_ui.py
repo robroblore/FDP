@@ -1,16 +1,17 @@
 import os
-import random
 import socket
 import sys
 import threading
 
+from PySide6.QtWidgets import QStackedWidget
 from qtpy.QtCore import Property, Qt
 from qtpy.QtWidgets import QApplication, QWidget, QVBoxLayout, QScrollArea, QSizePolicy, QFileDialog
 
 from FluentQt import fTheme, Theme
 from FluentQt.common.overload import Overload
-from FluentQt.widgets import FMainWindow, FPushButton
+from FluentQt.widgets import FMainWindow, FPushButton, FLineEdit
 from FluentQt.widgets.expander import FExpander
+from FluentQt.widgets.label import FLabel
 from client import Client
 from tools import DataType
 
@@ -64,8 +65,9 @@ files_data:
 """
 
 class FileList(QWidget):
-    def __init__(self, client, parent=None):
+    def __init__(self, client, parent: 'MainWindow'=None):
         super().__init__(parent)
+        self.parent = parent
         self.client = client
         self._files_data: list = []
         self._file_widgets: list[FileWidget] = []
@@ -85,9 +87,11 @@ class FileList(QWidget):
         scroll_area.setWidget(self.scroll_content)
 
         self.layout = QVBoxLayout(self.scroll_content)
+        button = FPushButton("Disconnect", self)
+        button.clicked.connect(self.parent.disconnect_client)
+        layout.addWidget(button)
 
         self.client.files_info_received.connect(self.set_files)
-        self.client.send(DataType.FILES_INFO)
 
     def set_files(self, files: list):
         self._files_data = files
@@ -165,22 +169,88 @@ class FileList(QWidget):
         else:
             event.ignore()
 
+class ConnectingWidget(QWidget):
+    def __init__(self, parent:'MainWindow'=None):
+        super().__init__(parent)
+
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        connecting_label = FLabel("Connecting...", self)
+        layout.addWidget(connecting_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+class LoginWidget(QWidget):
+    def __init__(self, parent:'MainWindow'=None):
+        super().__init__(parent)
+
+        self.parent = parent
+
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        login_label = FLabel("Enter your username", self)
+        layout.addWidget(login_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        line_edit = FLineEdit(self)
+        line_edit.setPlaceholderText("Username")
+        line_edit.textChanged.connect(lambda text: setattr(self.parent, "login", text))
+        layout.addWidget(line_edit, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        server_ip_label = FLabel("Enter the server IP", self)
+        layout.addWidget(server_ip_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        server_ip_edit = FLineEdit(socket.gethostbyname(socket.gethostname()), self)
+        server_ip_edit.setPlaceholderText("Server IP")
+        server_ip_edit.textChanged.connect(lambda text: setattr(self.parent.client, "server_ip", text))
+        layout.addWidget(server_ip_edit, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        login_button = FPushButton("Login", self)
+        login_button.clicked.connect(lambda: threading.Thread(target=self.parent.connect_client).start())
+        layout.addWidget(login_button, alignment=Qt.AlignmentFlag.AlignCenter)
 
 class MainWindow(FMainWindow):
-    def __init__(self, client) -> None:
+    def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("File Delivery Protocol")
+        self.login = ""
+        self.server_ip = socket.gethostbyname(socket.gethostname())
 
-        file_list = FileList(client, self)
-        self.setCentralWidget(file_list)
+        self.client = Client()
+
+        self.stacked_widget = QStackedWidget(self)
+        self.setCentralWidget(self.stacked_widget)
+
+        self.connecting = ConnectingWidget(self)
+        self.login_widget = LoginWidget(self)
+        self.file_list = FileList(self.client, self)
+
+        self.stacked_widget.addWidget(self.connecting)
+        self.stacked_widget.addWidget(self.login_widget)
+        self.stacked_widget.addWidget(self.file_list)
+
+        self.stacked_widget.setCurrentIndex(1)
+
+
+    def connect_client(self):
+
+        self.stacked_widget.setCurrentIndex(0)
+
+        result = self.client.connect_to_server(self.login, self.server_ip)
+        if result:
+            self.stacked_widget.setCurrentIndex(2)
+            self.client.send(DataType.FILES_INFO)
+        else:
+            self.stacked_widget.setCurrentIndex(1)
+
+    def disconnect_client(self):
+        self.client.send(DataType.DISCONNECT)
+        self.stacked_widget.setCurrentIndex(1)
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     fTheme.set_app(app, Theme.DARK, True)
-    client = Client(f"test client {random.randint(0, 100)}")
-    client.connect_to_server(socket.gethostbyname(socket.gethostname()))
-    main_window = MainWindow(client)
+    main_window = MainWindow()
     main_window.resize(600, 600)
     main_window.show()
 

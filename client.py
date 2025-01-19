@@ -1,10 +1,10 @@
 import json
+import random
 import socket
 import threading
 
 from PySide6.QtCore import QObject
 from qtpy.QtCore import Signal
-from tqdm import tqdm
 
 import main
 import os
@@ -16,7 +16,7 @@ from tools import receive_data, send_data, DataType, send_file, receive_file
 class Client(QObject):
     files_info_received = Signal(list)
 
-    def __init__(self, login):
+    def __init__(self):
         super().__init__()
         self.FORMAT = main.DEFAULT_FORMAT
         self.HEADERDATALEN = main.DEFAULT_HEADERDATALEN
@@ -24,7 +24,7 @@ class Client(QObject):
         self.FILE_CHUNK_SIZE = 1024
 
         self.SERVER = None
-        self.LOGIN = login
+        self.LOGIN = None
 
         self.isConnected = False
 
@@ -37,8 +37,9 @@ class Client(QObject):
 
         self.listener = None
 
-    def connect_to_server(self, server_ip):
+    def connect_to_server(self, login, server_ip):
         self.SERVER = server_ip
+        self.LOGIN = login
 
         try:
             # Connect to the server
@@ -48,14 +49,22 @@ class Client(QObject):
         except Exception as err:
             print("Connection failed")
             print(f"Unexpected {err=}, {type(err)=}")
-            return
+            return False
 
         send_data(self.client, self.LOGIN.encode(self.FORMAT), 64)
+        result = receive_data(self.client, 1)
+
+        if not result:
+            print("Connection closed")
+            self.isConnected = False
+            self.client.close()
+            return False
 
         # Listen for messages from the server and be able to send messages to the server at the same time using
         # threading
         self.listener = threading.Thread(target=self.listen, daemon=True)
         self.listener.start()
+        return True
 
     def send(self, data_type: int, data: str = ""):
         """
@@ -91,6 +100,13 @@ class Client(QObject):
             case DataType.UPLOAD_FILE:
                 # Upload file -> data = file path
                 print("[DEBUG] Uploading file")
+
+                file_name = os.path.basename(data).encode(self.FORMAT)
+                file_name_size = str(len(file_name)).encode(self.FORMAT)
+
+                send_data(self.client, file_name_size, self.HEADERDATALEN)
+                send_data(self.client, file_name, len(file_name))
+
                 send_file(self.client, data, self.HEADERDATALEN, self.FORMAT, self.FILE_CHUNK_SIZE)
 
             case DataType.FILES_INFO:
@@ -122,12 +138,7 @@ class Client(QObject):
         Receive data from the server
 
         Persistent header information:
-            - Data type {0: Debug, 1: Command, 2: File}
-            - Data length
-
-        Optional header information (for files):
-            - File name size
-            - File name
+            - Data type {0: Debug, 1: Command, 2: Upload file, 3: Download file, 4: Files info, 5: Delete file, 6: Disconnect}
         """
 
         data_received = receive_data(self.client, 1)
@@ -159,7 +170,7 @@ class Client(QObject):
                 file_path_hash_size = int(receive_data(self.client, self.HEADERDATALEN).decode(self.FORMAT))
                 file_path_hash = receive_data(self.client, file_path_hash_size).decode(self.FORMAT)
 
-                receive_file(self.client, self.HEADERDATALEN, self.FORMAT, self.FILE_CHUNK_SIZE, file_path=self.paths_to_save_files[str(file_path_hash)])
+                receive_file(self.client, self.HEADERDATALEN, self.FORMAT, self.FILE_CHUNK_SIZE, self.paths_to_save_files[str(file_path_hash)])
                 del self.paths_to_save_files[str(file_path_hash)]
 
             case DataType.FILES_INFO:
@@ -184,6 +195,8 @@ class Client(QObject):
     def download_file(self, file_name, file_path):
         """
         Download a file from the server
+        Send a hash of the file path to the server to later know which file the server is sending us
+        Add a random number in the hash to allow for multiple files with the same name to be downloaded
         """
 
         send_data(self.client, str(DataType.DOWNLOAD_FILE).encode(self.FORMAT), len(str(DataType.DOWNLOAD_FILE)))
@@ -194,7 +207,7 @@ class Client(QObject):
         send_data(self.client, file_name_size, self.HEADERDATALEN)
         send_data(self.client, file_name, len(file_name))
 
-        file_path_hash = hash(file_path)
+        file_path_hash = hash(file_path + random.randint(0, 1000000000))
         self.paths_to_save_files[str(file_path_hash)] = file_path
 
         file_path_hash = str(file_path_hash).encode(self.FORMAT)

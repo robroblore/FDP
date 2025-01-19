@@ -5,7 +5,6 @@ import socket
 
 import server
 import client
-from enum import IntEnum
 import threading
 
 from tools import DataType
@@ -49,12 +48,12 @@ if __name__ == "__main__":
             print("Username must be less than 64 characters")
             login = ""
 
-    local_client = client.Client(login)
+    local_client = client.Client()
     if not isHost:
         server_ip = input("Enter the server IP (10.xxx.xxx.xxx): ")
-        local_client.connect_to_server(server_ip)
+        local_client.connect_to_server(login, server_ip)
     else:
-        local_client.connect_to_server(socket.gethostbyname(socket.gethostname()))
+        local_client.connect_to_server(login, socket.gethostbyname(socket.gethostname()))
 
     while True:
         print("1. Send debug")
