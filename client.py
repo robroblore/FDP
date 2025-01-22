@@ -207,7 +207,7 @@ class Client(QObject):
         send_data(self.client, file_name_size, self.HEADERDATALEN)
         send_data(self.client, file_name, len(file_name))
 
-        file_path_hash = hash(file_path + random.randint(0, 1000000000))
+        file_path_hash = hash(file_path + str(random.randint(0, 1000000000)))
         self.paths_to_save_files[str(file_path_hash)] = file_path
 
         file_path_hash = str(file_path_hash).encode(self.FORMAT)

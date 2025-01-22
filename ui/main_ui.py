@@ -6,7 +6,7 @@ import threading
 from PySide6.QtWidgets import QStackedWidget
 from qtpy.QtCore import Property, Qt
 from qtpy.QtWidgets import QApplication, QWidget, QVBoxLayout, QScrollArea, QSizePolicy, QFileDialog
-
+import pywintypes
 from FluentQt import fTheme, Theme
 from FluentQt.common.overload import Overload
 from FluentQt.widgets import FMainWindow, FPushButton, FLineEdit
